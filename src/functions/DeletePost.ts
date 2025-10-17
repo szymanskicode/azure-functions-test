@@ -20,8 +20,8 @@ export async function DeletePost(request: HttpRequest): Promise<HttpResponseInit
     }
 
     const entity = {
-      PartitionKey: { _: blog },
-      RowKey: { _: id },
+      partitionKey: blog,
+      rowKey: id,
     };
 
     await deleteEntity("Posts", entity);

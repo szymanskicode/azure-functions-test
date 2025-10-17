@@ -1,106 +1,80 @@
-import * as azure from "azure-storage";
+import { TableClient, TableEntity, odata } from "@azure/data-tables";
 
-const tableService = azure.createTableService(
-  process.env.AZURE_STORAGE_ACCOUNT,
-  process.env.AZURE_STORAGE_ACCESS_KEY
-);
+let tableClientCache: Map<string, TableClient> = new Map();
 
-const insertEntity = (tableName: string, entity: any): Promise<void> => {
-  return new Promise((resolve, reject) => {
-    tableService.insertEntity(
-      tableName,
-      entity,
-      { echoContent: true, payloadFormat: "application/json;odata=nometadata" },
-      (error: any, result: any, response: any) => {
-        if (error) {
-          reject(error);
-        } else {
-          resolve(response.body);
-        }
-      }
-    );
-  });
+const getTableClient = (tableName: string): TableClient => {
+  if (!tableClientCache.has(tableName)) {
+    const connectionString = process.env.AzureWebJobsStorage;
+
+    if (!connectionString) {
+      throw new Error("AzureWebJobsStorage connection string must be set in environment variables");
+    }
+
+    const client = TableClient.fromConnectionString(connectionString, tableName);
+    tableClientCache.set(tableName, client);
+  }
+
+  return tableClientCache.get(tableName)!;
 };
 
-const queryEntities = (tableName: string, query: any): Promise<any[]> => {
-  return new Promise((resolve, reject) => {
-    tableService.queryEntities(
-      tableName,
-      query,
-      null,
-      { payloadFormat: "application/json;odata=nometadata" },
-      (error: any, result: any, response: any) => {
-        if (error) {
-          reject(error);
-        } else {
-          resolve(response.body);
-        }
-      }
-    );
-  });
-};
-
-const updateEntity = (tableName: string, entity: any): Promise<any> => {
-  return new Promise((resolve, reject) => {
-    tableService.mergeEntity(tableName, entity, (error: any) => {
-      if (error) {
-        reject(error);
-      } else {
-        // After updating, retrieve the updated entity
-        tableService.retrieveEntity(
-          tableName,
-          entity.PartitionKey._,
-          entity.RowKey._,
-          { payloadFormat: "application/json;odata=nometadata" },
-          (retrieveError: any, _retrieveResult: any, retrieveResponse: any) => {
-            if (retrieveError) {
-              reject(retrieveError);
-            } else {
-              resolve(retrieveResponse.body);
-            }
-          }
-        );
-      }
-    });
-  });
-};
-
-const retrieveEntity = (
+const retrieveEntity = async (
   tableName: string,
   partitionKey: string,
   rowKey: string
 ): Promise<any | null> => {
-  return new Promise((resolve, reject) => {
-    tableService.retrieveEntity(
-      tableName,
-      partitionKey,
-      rowKey,
-      { payloadFormat: "application/json;odata=nometadata" },
-      (error: any, _result: any, response: any) => {
-        if (error) {
-          if (error.statusCode === 404) {
-            resolve(null);
-          } else {
-            reject(error);
-          }
-        } else {
-          resolve(response.body);
-        }
-      }
-    );
-  });
+  try {
+    const client = getTableClient(tableName);
+    const entity = await client.getEntity(partitionKey, rowKey);
+    return entity;
+  } catch (error: any) {
+    if (error.statusCode === 404) {
+      return null;
+    }
+    throw error;
+  }
 };
 
-const deleteEntity = (tableName: string, entity: any): Promise<void> => {
-  return new Promise((resolve, reject) => {
-    tableService.deleteEntity(tableName, entity, (error: any) => {
-      if (error) {
-        reject(error);
-      } else {
-        resolve();
-      }
-    });
-  });
+const insertEntity = async (tableName: string, entity: any): Promise<any> => {
+  const client = getTableClient(tableName);
+  await client.createEntity(entity);
+
+  // Return the created entity
+  return await client.getEntity(entity.partitionKey, entity.rowKey);
 };
 
-export { insertEntity, queryEntities, updateEntity, retrieveEntity, deleteEntity };
+const queryEntities = async (tableName: string, filter?: string): Promise<any[]> => {
+  const client = getTableClient(tableName);
+  const entities: any[] = [];
+
+  const iterator = client.listEntities({ queryOptions: { filter } });
+
+  for await (const entity of iterator) {
+    entities.push(entity);
+  }
+
+  return entities;
+};
+
+const updateEntity = async (tableName: string, entity: any): Promise<any> => {
+  const client = getTableClient(tableName);
+
+  // Use merge mode to update only provided properties
+  await client.updateEntity(entity, "Merge");
+
+  // Return the updated entity
+  return await client.getEntity(entity.partitionKey, entity.rowKey);
+};
+
+const deleteEntity = async (tableName: string, entity: any): Promise<any> => {
+  const client = getTableClient(tableName);
+
+  // First retrieve the entity before deleting
+  const deletedEntity = await client.getEntity(entity.partitionKey, entity.rowKey);
+
+  // Delete the entity
+  await client.deleteEntity(entity.partitionKey, entity.rowKey);
+
+  return deletedEntity;
+};
+
+export { retrieveEntity, insertEntity, queryEntities, updateEntity, deleteEntity };

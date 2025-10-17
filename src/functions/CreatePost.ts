@@ -34,10 +34,10 @@ export async function CreatePost(
     }
 
     const entity = {
-      PartitionKey: { _: blog },
-      RowKey: { _: new Date().getTime().toString() },
-      Title: { _: title },
-      Content: { _: content },
+      partitionKey: blog,
+      rowKey: new Date().getTime().toString(),
+      title: title,
+      content: content,
     };
 
     const result = await insertEntity("Posts", entity);

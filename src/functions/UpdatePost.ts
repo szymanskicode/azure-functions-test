@@ -1,4 +1,3 @@
-import * as azure from "azure-storage";
 import { app, HttpRequest, HttpResponseInit } from "@azure/functions";
 import { updateEntity, retrieveEntity } from "../services/tableService";
 
@@ -42,17 +41,17 @@ export async function UpdatePost(request: HttpRequest): Promise<HttpResponseInit
       };
     }
 
-    const entity = {
-      PartitionKey: { _: blog },
-      RowKey: { _: id },
+    const entity: any = {
+      partitionKey: blog,
+      rowKey: id,
     };
 
     if (title) {
-      entity["Title"] = { _: title };
+      entity.title = title;
     }
 
     if (content) {
-      entity["Content"] = { _: content };
+      entity.content = content;
     }
 
     const result = await updateEntity("Posts", entity);

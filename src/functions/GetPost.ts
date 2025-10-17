@@ -1,4 +1,3 @@
-import * as azure from "azure-storage";
 import { app, HttpRequest, HttpResponseInit } from "@azure/functions";
 import { queryEntities } from "../services/tableService";
 
@@ -6,11 +5,9 @@ export async function GetPost(request: HttpRequest): Promise<HttpResponseInit> {
   try {
     const { blog, id } = request.params;
 
-    const query = new azure.TableQuery()
-      .where("PartitionKey eq ? and RowKey eq ?", blog, id)
-      .select(["RowKey", "Title", "Content", "Author", "Timestamp"]);
+    const filter = `PartitionKey eq '${blog}' and RowKey eq '${id}'`;
 
-    const result = await queryEntities("Posts", query);
+    const result = await queryEntities("Posts", filter);
 
     return {
       status: 200,
